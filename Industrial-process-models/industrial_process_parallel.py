@@ -1,4 +1,5 @@
 from gurobipy import *
+import math as math
 import traceback
 
 try:
@@ -27,9 +28,16 @@ try:
     ELECTRICITY_PRICES = [5, 5, 6, 7, 7, 8, 9, 9, 10, 11, 12, 13, 13, 12, 12, 11, 10, 10, 9, 8, 8, 7, 6, 5]
     # weird prices
     # ELECTRICITY_PRICES = [15, 14, 13, 12, 11, 9, 7, 5, 3, 8, 12, 16, 12, 11, 10, 9, 8, 6, 4, 4, 3, 2, 2, 2]
+    # ELECTRICITY_PRICES = [15, 14, 13, 50, 11, 9, 7, 5, 3, 8, 80, 16, 12, 11, 10, 100, 8, 6, 4, 4, 3, 2, 2, 2]
     # actual prices
     # ELECTRICITY_PRICES = [32.13, 31.53, 30.46, 30.50, 31.11, 29.95, 34.78, 51.33, 59.24, 59.00, 50.35, 42.44, 41.65, 41.16, 37.59, 39.09, 39.91, 49.40, 53.76, 59.67, 45.74, 40.39, 38.17, 31.56]
     INTERVALS = len(ELECTRICITY_PRICES)
+    def averaged(x):
+        res = {}
+        for i in range(0,len(x)):
+            res[i] = x[i] - sum(x) / len(x)
+        return res
+    averaged_prices = averaged(ELECTRICITY_PRICES)
     EAF_ELECTRICITY_USAGE = 17  # between 10 and 80
     LF_ELECTRICITY_USAGE = 4
 
@@ -44,6 +52,12 @@ try:
         cost = 0
         for i in range(INTERVALS):
                 cost += ELECTRICITY_PRICES[i] * usage * decisions[i]
+        return cost
+
+    def get_benefit_from_interval_decision(decisions, usage):
+        cost = 0
+        for i in range(INTERVALS):
+                cost += averaged_prices[i] * usage * decisions[i]
         return cost
 
     for eaf in range(EAFS):
@@ -152,22 +166,25 @@ try:
     m.addConstr(last_s_vc + VC_DURATION <= 1440, "end_time")
 
     objective = 0
+    benefit = 0
     for iteration in range(iterations):
         for eaf in range(EAFS):
             cost = get_cost_from_interval_decision(eaf_iteration_interval_decisions[eaf, iteration], EAF_ELECTRICITY_USAGE)
             cost += get_cost_from_interval_decision(lf_iteration_interval_decisions[eaf, iteration], LF_ELECTRICITY_USAGE)
             objective = objective + cost
 
-    m.setObjective(objective + quicksum(vc_start_times[0]) * 0.0, GRB.MINIMIZE)
+            benefit += get_benefit_from_interval_decision(eaf_iteration_interval_decisions[eaf, iteration], EAF_ELECTRICITY_USAGE)
+            benefit += get_benefit_from_interval_decision(lf_iteration_interval_decisions[eaf, iteration], LF_ELECTRICITY_USAGE)
+
+    m.setObjective(benefit, GRB.MINIMIZE)
 
     m.optimize()
 
     for v in m.getVars():
         if ('interval' not in v.varName and 'index' not in v.varName) and True:
-            print v.varName, v.x
+            print(v.varName, v.x)
 
-    print 'Obj:', m.objVal
-
+    print('Obj:', m.objVal)
 except GurobiError:
-    print 'Error reported'
+    print('Error reported')
     traceback.print_exc()
